@@ -91,6 +91,7 @@
   }
   td { padding: 5px 14px; vertical-align: top; white-space: nowrap; }
   tr.trip-start td { border-top: 1px solid var(--trip-divider); padding-top: 10px; }
+  tr.trip-start:first-child td { border-top: none; }
   tr:has(+ tr.trip-start) td { padding-bottom: 10px; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.num { font-family: var(--mono); }
@@ -319,7 +320,7 @@ function render(data, live) {
   // divider can separate one trip from the next, however many legs it has.
   let openOrigin = null;
   flights.forEach((f, i) => {
-    if (openOrigin === null) { openOrigin = f.origin; f._newTrip = i > 0; }
+    if (openOrigin === null) { openOrigin = f.origin; f._newTrip = true; }
     else { f._newTrip = false; }
     if (f.destination === openOrigin) openOrigin = null;
   });
