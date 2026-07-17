@@ -12,8 +12,7 @@
  * Setup (one time):
  *   1. Create a Google Sheet, then Extensions → Apps Script, paste this file.
  *   2. Run setupSheets() once (grants Sheets scope, creates tabs).
- *      Optionally paste data/flights-seed.csv + savings-seed.csv into the tabs.
- *   3. Run syncFlights() once (grants Gmail scope).
+ *   3. Run syncFlights() once (grants Gmail scope) to pull current bookings.
  *   4. Deploy → New deployment → Web app → Execute as: Me,
  *      Who has access: Anyone with the link. Copy the /exec URL into
  *      DATA_URL at the top of dashboard/index.html.
