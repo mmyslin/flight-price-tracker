@@ -28,7 +28,7 @@ const SAVINGS_SHEET = 'Savings';
 const FLIGHT_COLS = [
   'airline', 'confirmation', 'date', 'departTime', 'origin', 'destination',
   'flightNumbers', 'cashPaid', 'creditsApplied', 'milesPaid', 'awardFees',
-  'status', 'notes', 'sourceEmail', 'lastSynced'
+  'status', 'notes', 'sourceEmail', 'lastSynced', 'currentPrice', 'currentMiles'
 ];
 const SAVINGS_COLS = ['date', 'route', 'note', 'dollarsSaved', 'milesSaved'];
 
