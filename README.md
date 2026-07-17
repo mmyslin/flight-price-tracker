@@ -21,7 +21,6 @@ read/write the same Sheet.
   the Apps Script `/exec` URL; empty = renders embedded seed data.
 - `apps-script/Code.gs` — Gmail → Sheet sync (United + Alaska parsers), upsert
   that never clobbers manual edits, and the JSON endpoint.
-- `data/flights-seed.csv` — extracted current flights, paste into the Flights tab.
 - `scripts/check-prices.mjs` — headless-browser Google Flights price check, run
   daily by GitHub Actions (see below).
 
@@ -30,7 +29,8 @@ read/write the same Sheet.
 1. Create a Google Sheet ("Flight Tracker").
 2. Extensions → Apps Script → paste `Code.gs` → save.
 3. Run `setupSheets()`, approve the authorization prompt.
-4. Paste `data/flights-seed.csv` into the Flights tab (or run `syncFlights()`).
+4. Run `syncFlights()` to pull your current bookings from Gmail (or paste rows
+   into the Flights tab by hand — see `FLIGHT_COLS` in `Code.gs` for columns).
 5. Deploy → New deployment → **Web app**, Execute as *Me*, access *Anyone with the link*.
 6. Copy the `/exec` URL into `DATA_URL` in `dashboard/index.html`.
 7. Open the dashboard: `python3 -m http.server 8742 --directory dashboard` →
