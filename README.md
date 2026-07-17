@@ -73,6 +73,20 @@ One-time setup to enable it:
 The workflow fails loudly (red X, GitHub email notification) if any flight's price
 couldn't be read, so a broken Google Flights selector doesn't fail silently.
 
+## Price-drop email alerts
+
+`checkPriceAlerts()` (in `Code.gs`) runs on its own daily time-driven trigger
+(set up in the Apps Script editor's Triggers page), scheduled after the price
+check above so it always sees same-day fresh prices. For each `active` flight
+where `currentPrice` has dropped **$25+** below what was actually paid
+(`cashPaid + creditsApplied`), it emails a summary to the script owner's own
+Google account (`Session.getEffectiveUser().getEmail()` — no address is
+hardcoded in source). The `alertedPrice` column tracks the last price already
+emailed for a row, so a still-cheap fare doesn't re-alert every day — only a
+new, lower price (or first time crossing the threshold) triggers another
+email. No additional setup beyond the one-time `MailApp` authorization prompt
+the first time the function runs.
+
 ## Privacy note
 
 The web-app endpoint is "anyone with the link" — an unguessable URL, but
@@ -83,4 +97,5 @@ app behind your Google login.
 ## Roadmap
 
 - ~~current-price column, daily automated check~~ — done via GitHub Actions (see above).
-- v2: price-drop alerting (MailApp), automated savings tally on rebooking.
+- ~~price-drop alerting~~ — done via `checkPriceAlerts()` (see above).
+- v2: automated savings tally on rebooking.

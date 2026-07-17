@@ -28,9 +28,10 @@ const FLIGHT_COLS = [
   'airline', 'confirmation', 'date', 'departTime', 'origin', 'destination',
   'flightNumbers', 'cashPaid', 'creditsApplied', 'milesPaid', 'awardFees',
   'status', 'notes', 'sourceEmail', 'lastSynced', 'currentPrice', 'currentMiles',
-  'previousPrice', 'previousMiles'
+  'previousPrice', 'previousMiles', 'alertedPrice'
 ];
 const SAVINGS_COLS = ['date', 'route', 'note', 'dollarsSaved', 'milesSaved'];
+const ALERT_USD_THRESHOLD = 25;
 
 /* ============================ SETUP ============================ */
 
@@ -101,6 +102,60 @@ function syncFlights() {
       if (existingNotes.some(n => n.includes(conf))) return;
       savings.appendRow([isoDate_(m.date), f.origin + '-' + f.destination + ' (' + conf + ')', note, amt, 0]);
     });
+}
+
+/**
+ * Emails a summary when an active flight's currentPrice (set daily by
+ * scripts/check-prices.mjs) has dropped $25+ below what was actually paid
+ * (cashPaid + creditsApplied). alertedPrice tracks the last price already
+ * emailed for that row, so a still-cheap fare doesn't re-alert every day —
+ * only a NEW, lower price (or the first time crossing the threshold) does.
+ * Run this on its own daily trigger, timed after the price-check workflow.
+ */
+function checkPriceAlerts() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(FLIGHTS_SHEET);
+  if (sh.getLastRow() < 2) return;
+
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, FLIGHT_COLS.length).getValues();
+  const idx = name => FLIGHT_COLS.indexOf(name);
+  const alerts = [];
+
+  rows.forEach((row, i) => {
+    const status = row[idx('status')];
+    const currentPrice = row[idx('currentPrice')];
+    if (status !== 'active' || currentPrice === '' || currentPrice == null) return;
+
+    const totalPaid = Number(row[idx('cashPaid')] || 0) + Number(row[idx('creditsApplied')] || 0);
+    const delta = Number(currentPrice) - totalPaid;
+    const alertedPrice = row[idx('alertedPrice')];
+    if (delta > -ALERT_USD_THRESHOLD || Number(currentPrice) === Number(alertedPrice)) return;
+
+    const dateVal = row[idx('date')];
+    alerts.push({
+      rowNum: i + 2,
+      confirmation: row[idx('confirmation')],
+      origin: row[idx('origin')],
+      destination: row[idx('destination')],
+      date: dateVal instanceof Date ? isoDate_(dateVal) : dateVal,
+      totalPaid: totalPaid,
+      currentPrice: Number(currentPrice),
+    });
+  });
+  if (!alerts.length) return;
+
+  const lines = alerts.map(a =>
+    a.origin + ' → ' + a.destination + ' on ' + a.date + ' (' + a.confirmation + '): ' +
+    'paid $' + a.totalPaid.toFixed(2) + ', now $' + a.currentPrice.toFixed(2) +
+    ' — save $' + (a.totalPaid - a.currentPrice).toFixed(2)
+  );
+  const subject = alerts.length === 1
+    ? 'Flight price drop: ' + alerts[0].origin + '→' + alerts[0].destination + ' is $' +
+      (alerts[0].totalPaid - alerts[0].currentPrice).toFixed(2) + ' cheaper'
+    : 'Flight price drop: ' + alerts.length + ' flights are $' + ALERT_USD_THRESHOLD + '+ cheaper';
+  MailApp.sendEmail(Session.getEffectiveUser().getEmail(), subject, lines.join('; '));
+
+  alerts.forEach(a => sh.getRange(a.rowNum, idx('alertedPrice') + 1).setValue(a.currentPrice));
 }
 
 function collectMessages_(query) {
@@ -178,7 +233,7 @@ function upsertFlight_(ss, flight) {
  * United "eTicket Itinerary and Receipt". Single- or multi-segment; payment
  * variants seen in the wild:
  *  - award: "Special member price: 12,600 miles" / "Total: 12,600 miles + 5.60 USD"
- *  - credit: "Future flight credit: 93.40 USD" + "Confirmation #: REDACTEDCR2"
+ *  - credit: "Future flight credit: 93.40 USD" + "Confirmation #: XXXXXX"
  *            + "Future flight credit applied: -93.40 USD" + "Total: 0.00 USD"
  *  - mixed:  credit + "An additional amount of 3.97 USD ... charged to Visa"
  *  - reissue: "Previous Ticket Balance" + additional collection
@@ -233,7 +288,7 @@ function parseUnitedReceipt_(body) {
  * Alaska "Your flight is booked" (Atmos era). Change emails share the conf
  * and carry "(Previous Ticket ...)". Year is absent — inferred as the next
  * occurrence of that month/day.
- *  - "Confirmation code: REDACTED8"
+ *  - "Confirmation code: XXXXXX"
  *  - "Flight 1 · Sat Aug 29" / "AS 3100"
  *  - "Departure date: Aug 29 at 5:22 PM"
  *  - "5000 points have been redeemed"
