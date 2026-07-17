@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flight Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* United-inspired palette: Rhapsody Blue #0C2340, United Blue #0033A0,
      Sky Blue #69B3E7, Runway Gray #D6D2C4 */
@@ -22,6 +25,7 @@
     --bad:            #b33636;
     --warn-bg:        #f3ecd2;
     --warn-ink:       #6b5600;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -70,7 +74,7 @@
   }
   .saved-pod .label { font-size: 11.5px; font-weight: 600; text-transform: uppercase;
                       letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 4px; }
-  .saved-pod .value { font-size: 28px; font-weight: 650; letter-spacing: -0.01em; color: var(--good); }
+  .saved-pod .value { font-family: var(--mono); font-size: 26px; font-weight: 700; letter-spacing: -0.01em; color: var(--good); }
 
   .table-wrap {
     background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
@@ -84,12 +88,12 @@
   }
   td { padding: 11px 14px; border-bottom: 1px solid var(--gridline); vertical-align: top; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .route { font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .route { font-family: var(--mono); font-weight: 600; letter-spacing: 0.01em; }
   .route .arrow { color: var(--text-muted); font-weight: 400; padding: 0 2px; }
-  .conf { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--accent); }
+  .conf { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--accent); }
   .muted { color: var(--text-muted); }
-  .secondary { color: var(--text-secondary); }
+  .secondary { color: var(--text-secondary); font-family: var(--mono); font-size: 12.5px; }
   .total { font-weight: 650; }
   .total .mi { color: var(--miles); }
   .price-down { color: var(--good); font-weight: 650; }
