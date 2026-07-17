@@ -25,6 +25,7 @@
     --bad:            #b33636;
     --warn-bg:        #f3ecd2;
     --warn-ink:       #6b5600;
+    --trip-divider:   rgba(12,35,64,0.3);
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
@@ -43,6 +44,7 @@
       --bad:            #e66767;
       --warn-bg:        #2b2f18;
       --warn-ink:       #d8c470;
+      --trip-divider:   rgba(105,179,231,0.4);
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,7 +59,7 @@
   header { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
   .head-left { flex: 1 1 320px; }
   .title-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  h1 { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
   .badge {
     font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
     border: 1px solid var(--border);
@@ -88,6 +90,7 @@
   }
   td { padding: 11px 14px; border-bottom: 1px solid var(--gridline); vertical-align: top; white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
+  tr.trip-start td { border-top: 1.5px solid var(--trip-divider); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
   .route { font-family: var(--mono); font-weight: 600; letter-spacing: 0.01em; }
   .route .arrow { color: var(--text-muted); font-weight: 400; padding: 0 2px; }
@@ -110,7 +113,7 @@
 <header>
   <div class="head-left">
     <div class="title-row">
-      <h1>Flight Tracker</h1>
+      <h1>FLIGHT BOARD</h1>
       <span id="source-badge" class="badge local">local snapshot</span>
       <a class="sheet-link" id="sheet-link" target="_blank" rel="noopener" style="display:none">sheet&nbsp;↗</a>
     </div>
@@ -308,6 +311,16 @@ function render(data, live) {
     .filter(f => f.status !== "canceled" && new Date(f.date + "T00:00:00") >= today)
     .sort((a, b) => (a.date + (a.departTime || "")).localeCompare(b.date + (b.departTime || "")));
 
+  // Mark the first leg of each trip (a run of connected flights that
+  // eventually returns to its starting airport, e.g. SFO→CLD→SAN→SFO) so a
+  // divider can separate one trip from the next, however many legs it has.
+  let openOrigin = null;
+  flights.forEach((f, i) => {
+    if (openOrigin === null) { openOrigin = f.origin; f._newTrip = i > 0; }
+    else { f._newTrip = false; }
+    if (f.destination === openOrigin) openOrigin = null;
+  });
+
   const dollarsSaved = (data.savings || []).reduce((s, r) => s + (Number(r.dollarsSaved) || 0), 0);
   const milesSaved   = (data.savings || []).reduce((s, r) => s + (Number(r.milesSaved) || 0), 0);
   document.getElementById("saved-value").textContent =
@@ -318,7 +331,7 @@ function render(data, live) {
     const totalParts = [];
     if (totalUsd(f)) totalParts.push(fmtUsd(totalUsd(f)));
     if (f.milesPaid) totalParts.push(`<span class="mi">${fmtMiles(f.milesPaid)}</span>`);
-    return `<tr>
+    return `<tr class="${f._newTrip ? "trip-start" : ""}">
       <td>${fmtDate(f.date)}</td>
       <td class="secondary">${fmtTime(f.departTime)}</td>
       <td class="route">${f.origin}<span class="arrow">→</span>${f.destination}</td>
