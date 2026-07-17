@@ -282,7 +282,10 @@ function sheetToObjects_(sh, cols) {
     const o = {};
     cols.forEach((c, i) => {
       let v = row[i];
-      if (v instanceof Date) v = isoDate_(v);
+      // Sheets auto-converts "HH:MM"-looking strings to Time-of-day values
+      // (Date objects on the 1899-12-30 epoch) — format those as HH:MM, not
+      // as a date, or the epoch date leaks into the JSON.
+      if (v instanceof Date) v = (c === 'departTime') ? formatTime_(v) : isoDate_(v);
       o[c] = v;
     });
     return o;
@@ -296,6 +299,9 @@ function matchNum_(s, re) { const m = s.match(re); return m ? Number(m[1].replac
 function round2_(n) { return Math.round(n * 100) / 100; }
 function isoDate_(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatTime_(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 const MONTHS_ = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 function toIso_(year, monthName, day) {
