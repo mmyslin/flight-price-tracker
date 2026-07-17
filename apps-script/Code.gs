@@ -154,7 +154,7 @@ function upsertFlight_(ss, flight) {
     const parsed = flight[col];
     if (parsed === undefined || parsed === '') return;
     const cur = rows[idx][i];
-    const curStr = cur instanceof Date ? isoDate_(cur) : String(cur);
+    const curStr = cur instanceof Date ? (col === 'departTime' ? formatTime_(cur) : isoDate_(cur)) : String(cur);
     if (col === 'notes' || col === 'sourceEmail' || col === 'lastSynced') {
       sh.getRange(rowNum, i + 1).setValue(parsed);
     } else if (curStr === '' || curStr === String(parsed)) {
@@ -165,7 +165,11 @@ function upsertFlight_(ss, flight) {
   });
   if (conflicts.length) {
     const noteCell = sh.getRange(rowNum, FLIGHT_COLS.indexOf('notes') + 1);
-    noteCell.setValue(((noteCell.getValue() || '') + ' [sync conflict — ' + conflicts.join('; ') + ']').trim());
+    const existingNote = noteCell.getValue() || '';
+    const conflictText = ' [sync conflict — ' + conflicts.join('; ') + ']';
+    if (!existingNote.includes(conflictText.trim())) {
+      noteCell.setValue((existingNote + conflictText).trim());
+    }
   }
 }
 

@@ -62,6 +62,14 @@ async function checkPrice(browser, flight) {
         await consentBtn.click().catch(() => {});
       }
 
+      const priceEl = page.locator('span[aria-label$="US dollars"]').first();
+      // Baseline (default "include Basic") price, used below to detect the
+      // filtered re-fetch actually landing — the URL updates via fast
+      // client-side routing well before the new fare data arrives, so
+      // reading the price right after the URL check can still return this
+      // stale, cheaper Basic-inclusive number.
+      const baseline = await priceEl.getAttribute('aria-label', { timeout: 10000 }).catch(() => null);
+
       const cabinDropdown = page.locator('[role="combobox"]').filter({ hasText: 'Economy' });
       await cabinDropdown.first().click({ timeout: 15000 });
 
@@ -77,7 +85,15 @@ async function checkPrice(browser, flight) {
         throw new Error(`unexpected tfs param after cabin selection: ${page.url()}`);
       }
 
-      const priceEl = page.locator('span[aria-label$="US dollars"]').first();
+      if (baseline) {
+        await page
+          .locator(`span[aria-label$="US dollars"]:not([aria-label="${baseline}"])`)
+          .first()
+          .waitFor({ state: 'attached', timeout: 8000 })
+          .catch(() => {});
+      }
+      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+
       const ariaLabel = await priceEl.getAttribute('aria-label', { timeout: 10000 });
       const price = parseInt(ariaLabel, 10);
       if (!Number.isFinite(price)) throw new Error(`couldn't parse price from "${ariaLabel}"`);
