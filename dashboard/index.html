@@ -90,7 +90,8 @@
     padding: 12px 14px 8px; border-bottom: 1px solid var(--baseline); white-space: nowrap;
   }
   td { padding: 5px 14px; vertical-align: top; white-space: nowrap; }
-  tr.trip-start td { border-top: 1px solid var(--trip-divider); padding-top: 15px; }
+  tr.trip-start td { border-top: 1px solid var(--trip-divider); padding-top: 10px; }
+  tr:has(+ tr.trip-start) td { padding-bottom: 10px; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.num { font-family: var(--mono); }
   .route { font-family: var(--mono); font-weight: 600; letter-spacing: 0.01em; }
