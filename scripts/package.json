@@ -1,0 +1,12 @@
+{
+  "name": "flight-price-check",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check-prices": "node check-prices.mjs"
+  },
+  "dependencies": {
+    "googleapis": "^140.0.1",
+    "playwright": "^1.47.2"
+  }
+}

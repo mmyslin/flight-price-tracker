@@ -1,0 +1,27 @@
+name: Daily flight price check
+
+on:
+  # 14:30 UTC = 7:30am Pacific (drifts to 6:30am during PST in winter)
+  schedule:
+    - cron: '30 14 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-prices:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node check-prices.mjs
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          SHEET_ID: '1u66t3zhJezZiguB_ek8laNgmh30mf61LLFFjc8n7ex8'

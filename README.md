@@ -22,6 +22,8 @@ read/write the same Sheet.
 - `apps-script/Code.gs` — Gmail → Sheet sync (United + Alaska parsers), upsert
   that never clobbers manual edits, and the JSON endpoint.
 - `data/flights-seed.csv` — extracted current flights, paste into the Flights tab.
+- `scripts/check-prices.mjs` — headless-browser Google Flights price check, run
+  daily by GitHub Actions (see below).
 
 ## Setup (one time)
 
@@ -43,6 +45,34 @@ read/write the same Sheet.
 - `status`: active / flown / canceled — dashboard shows only future `active` flights.
 - Rebooking wins go in the **Savings** tab; the dashboard tallies them.
 
+## Automated price check (GitHub Actions)
+
+`scripts/check-prices.mjs` runs daily via `.github/workflows/price-check.yml` (14:30
+UTC ≈ 7:30am Pacific). For each upcoming `active` cash-fare flight (award flights with
+`milesPaid` set are skipped — their price stays a manual/personal lookup), it opens
+Google Flights headlessly, switches the cabin-class filter to **"Economy (exclude
+Basic)"** (matches United's real Standard/Economy tier — see Conventions), reads the
+lowest fare, and writes it to the Sheet's `currentPrice` column — shifting the prior
+value into `previousPrice` first so the dashboard's trend arrow (↗/↘) stays accurate.
+It never touches award-flight rows.
+
+One-time setup to enable it:
+
+1. In Google Cloud Console, create (or reuse) a project and enable the **Google
+   Sheets API**.
+2. Create a **service account**, then generate a JSON key for it (IAM & Admin →
+   Service Accounts → Keys → Add key → JSON).
+3. Open the Flight Tracker Sheet → Share → add the service account's email
+   (`...@...iam.gserviceaccount.com`) as an **Editor**.
+4. In the GitHub repo → Settings → Secrets and variables → Actions, add a secret
+   named `GOOGLE_SERVICE_ACCOUNT_KEY` containing the full contents of the JSON key
+   file.
+5. Trigger a test run from the Actions tab (`Daily flight price check` → Run
+   workflow) before relying on the schedule.
+
+The workflow fails loudly (red X, GitHub email notification) if any flight's price
+couldn't be read, so a broken Google Flights selector doesn't fail silently.
+
 ## Privacy note
 
 The web-app endpoint is "anyone with the link" — an unguessable URL, but
@@ -52,5 +82,5 @@ app behind your Google login.
 
 ## Roadmap
 
-- v2: current-price column via a flight-pricing MCP (on-demand or daily trigger),
-  price-drop alerting (MailApp), automated savings tally on rebooking.
+- ~~current-price column, daily automated check~~ — done via GitHub Actions (see above).
+- v2: price-drop alerting (MailApp), automated savings tally on rebooking.
