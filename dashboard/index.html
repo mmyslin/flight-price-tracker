@@ -89,10 +89,10 @@
     letter-spacing: 0.04em; color: var(--text-muted);
     padding: 12px 14px 8px; border-bottom: 1px solid var(--baseline); white-space: nowrap;
   }
-  td { padding: 7px 14px; vertical-align: top; white-space: nowrap; }
-  tr.trip-start td { border-top: 1px solid var(--trip-divider); padding-top: 13px; }
-  .date { font-family: var(--mono); font-size: 12.5px; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  td { padding: 5px 14px; vertical-align: top; white-space: nowrap; }
+  tr.trip-start td { border-top: 1px solid var(--trip-divider); padding-top: 15px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.num { font-family: var(--mono); }
   .route { font-family: var(--mono); font-weight: 600; letter-spacing: 0.01em; }
   .route .arrow { color: var(--text-muted); font-weight: 400; padding: 0 2px; }
   .conf { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--accent); }
@@ -334,7 +334,7 @@ function render(data, live) {
     if (totalUsd(f)) totalParts.push(fmtUsd(totalUsd(f)));
     if (f.milesPaid) totalParts.push(`<span class="mi">${fmtMiles(f.milesPaid)}</span>`);
     return `<tr class="${f._newTrip ? "trip-start" : ""}">
-      <td class="date">${fmtDate(f.date)}</td>
+      <td>${fmtDate(f.date)}</td>
       <td class="secondary">${fmtTime(f.departTime)}</td>
       <td class="route">${f.origin}<span class="arrow">→</span>${f.destination}</td>
       <td class="secondary">${f.flightNumbers || "—"}</td>
