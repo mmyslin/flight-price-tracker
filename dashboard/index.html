@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Tracker</title>
+<style>
+  /* United-inspired palette: Rhapsody Blue #0C2340, United Blue #0033A0,
+     Sky Blue #69B3E7, Runway Gray #D6D2C4 */
+  :root {
+    --page:           #f1efe8;   /* Runway Gray, lightened */
+    --surface-1:      #fdfdfb;
+    --text-primary:   #0C2340;   /* Rhapsody Blue */
+    --text-secondary: #3d4f6b;
+    --text-muted:     #74809a;
+    --gridline:       #e3e0d4;   /* Runway Gray hairline */
+    --baseline:       #D6D2C4;   /* Runway Gray */
+    --border:         rgba(12,35,64,0.14);
+    --accent:         #0033A0;   /* United Blue */
+    --miles:          #2a6fb0;   /* Sky Blue, deepened for light-surface contrast */
+    --good:           #006300;
+    --bad:            #b33636;
+    --warn-bg:        #f3ecd2;
+    --warn-ink:       #6b5600;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:           #081525;   /* Rhapsody Blue, deepened */
+      --surface-1:      #0C2340;   /* Rhapsody Blue */
+      --text-primary:   #ffffff;
+      --text-secondary: #b9c6d8;
+      --text-muted:     #7f8ea3;
+      --gridline:       #1c3557;
+      --baseline:       #2a4870;
+      --border:         rgba(255,255,255,0.12);
+      --accent:         #69B3E7;   /* Sky Blue */
+      --miles:          #69B3E7;
+      --good:           #35b45f;
+      --bad:            #e66767;
+      --warn-bg:        #2b2f18;
+      --warn-ink:       #d8c470;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px 24px 64px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  header { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+  .head-left { flex: 1 1 320px; }
+  .title-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  .badge {
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .badge.live  { color: var(--good); }
+  .badge.local { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
+  .sheet-link { font-size: 12px; color: var(--text-muted); text-decoration: none; }
+  .sheet-link:hover { color: var(--accent); text-decoration: underline; }
+  .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+
+  .saved-pod {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 20px 12px; text-align: right; min-width: 200px;
+  }
+  .saved-pod .label { font-size: 11.5px; font-weight: 600; text-transform: uppercase;
+                      letter-spacing: 0.04em; color: var(--text-secondary); margin-bottom: 4px; }
+  .saved-pod .value { font-size: 28px; font-weight: 650; letter-spacing: -0.01em; color: var(--good); }
+
+  .table-wrap {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    overflow-x: auto;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 11.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-muted);
+    padding: 12px 14px 8px; border-bottom: 1px solid var(--baseline); white-space: nowrap;
+  }
+  td { padding: 11px 14px; border-bottom: 1px solid var(--gridline); vertical-align: top; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .route { font-weight: 600; }
+  .route .arrow { color: var(--text-muted); font-weight: 400; padding: 0 2px; }
+  .conf { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--accent); }
+  .muted { color: var(--text-muted); }
+  .secondary { color: var(--text-secondary); }
+  .total { font-weight: 650; }
+  .total .mi { color: var(--miles); }
+  .price-down { color: var(--good); font-weight: 650; }
+  .price-up   { color: var(--bad);  font-weight: 650; }
+  .credit-note { font-size: 11.5px; color: var(--text-muted); white-space: nowrap;
+                 overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  footer { margin-top: 18px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+  #error { display: none; margin: 0 0 16px; padding: 10px 14px; border-radius: 8px;
+           background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-left">
+    <div class="title-row">
+      <h1>Flight Tracker</h1>
+      <span id="source-badge" class="badge local">local snapshot</span>
+      <a class="sheet-link" id="sheet-link" target="_blank" rel="noopener" style="display:none">sheet&nbsp;↗</a>
+    </div>
+    <p class="subtitle" id="subtitle">Upcoming flights and what they actually cost — including credits spent.</p>
+  </div>
+  <div class="saved-pod">
+    <div class="label">Saved via rebooking</div>
+    <div class="value" id="saved-value">$0</div>
+  </div>
+</header>
+<div id="error"></div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Route</th>
+        <th>Flight</th>
+        <th>Conf&nbsp;#</th>
+        <th class="num">Cash</th>
+        <th class="num">Credits used</th>
+        <th class="num">Miles</th>
+        <th class="num">Total cost</th>
+        <th class="num">Current price</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<footer>
+  <div><strong>Total cost</strong> = cash paid + credits applied (credits are real value you spent) + award taxes/fees. Miles shown separately.</div>
+  <div><strong>Current price</strong>: Standard (regular) Economy fare for your exact flight, checked on united.com 2026-07-16 — <span class="price-down">green</span> when ≥ $25 cheaper than you paid, <span class="price-up">red</span> when ≥ $25 more expensive. Award tickets are blank for now (status/card discounts make points prices personal). Savings tally reads the <em>Savings</em> tab of the Sheet.</div>
+</footer>
+
+<script>
+/* ================= CONFIG ================= */
+/* DATA_URL: Apps Script web-app URL (ends in /exec). Empty = embedded snapshot.
+   SHEET_URL: the backing Google Sheet, linked discreetly in the header. */
+const DATA_URL = "";
+const SHEET_URL = "";
+
+/* Thresholds for coloring the current-price delta */
+const USD_THRESHOLD = 25;
+const MILES_THRESHOLD = 2500;
+
+/* ============ EMBEDDED SEED DATA ============
+   Flights extracted from Gmail on 2026-07-16 (United + Alaska receipts and
+   change emails). currentPrice / currentMiles are MOCK values for now.
+   Shape matches the JSON served by the Apps Script doGet(). */
+const SEED = {
+  generatedAt: "2026-07-16",
+  flights: [
+    { airline: "United", confirmation: "REDACTED1", date: "2026-07-22", departTime: "21:00",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1863",
+      cashPaid: 5.60, creditsApplied: 0, milesPaid: 6500, awardFees: 5.60,
+      status: "active", notes: "Award: 6,500 mi (member price; was 7,300)" },
+    { airline: "United", confirmation: "REDACTED2", date: "2026-07-25", departTime: "18:27",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 5.60, creditsApplied: 0, milesPaid: 8900, awardFees: 5.60,
+      status: "active", notes: "Award: 8,900 mi (member price; was 15,000)" },
+    { airline: "United", confirmation: "REDACTED3", date: "2026-07-29", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 0, creditsApplied: 192.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 234,
+      status: "active", notes: "$220.42 from REDACTEDCR1 credit; Aug 6→Jul 29 change returned $28.02 (net $192.40)" },
+    { airline: "United", confirmation: "REDACTED4", date: "2026-07-31", departTime: "18:27",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 4.00, creditsApplied: 139.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 198,
+      status: "active", notes: "Previous-ticket balance $139.40 + $4.00 card" },
+    { airline: "United", confirmation: "REDACTED5", date: "2026-08-12", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 0, creditsApplied: 93.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 94,
+      status: "active", notes: "$177.08 from REDACTEDCR1 credit; Aug 20→Aug 12 change returned $83.68 (net $93.40)" },
+    { airline: "United", confirmation: "REDACTED6", date: "2026-08-14", departTime: "18:28",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 0, creditsApplied: 108.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 144,
+      status: "active", notes: "Rebooked from Sep 3 UA1561 ($209.67 REDACTEDCR1 credit); new fare $108.40, $101.27 returned as credit" },
+    { airline: "Alaska", confirmation: "REDACTED7", date: "2026-08-26", departTime: "15:25",
+      origin: "SFO", destination: "SAN", flightNumbers: "AS 3099",
+      cashPaid: 5.60, creditsApplied: 0, milesPaid: 5000, awardFees: 5.60,
+      status: "active", notes: "Atmos points award; rebooked from Sep 6" },
+    { airline: "Alaska", confirmation: "REDACTED8", date: "2026-08-28", departTime: "17:22",
+      origin: "SAN", destination: "SFO", flightNumbers: "AS 3100",
+      cashPaid: 5.60, creditsApplied: 0, milesPaid: 5000, awardFees: 5.60,
+      status: "active", notes: "Atmos points award; Aug 22→29→28" },
+    { airline: "United", confirmation: "REDACTED9", date: "2026-09-02", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 0, creditsApplied: 93.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 94,
+      status: "active", notes: "$93.40 REDACTEDCR2 credit" },
+    { airline: "United", confirmation: "REDACTED10", date: "2026-09-04", departTime: "18:28",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 0, creditsApplied: 108.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 114,
+      status: "active", notes: "$108.40 REDACTEDCR2 credit" },
+    { airline: "United", confirmation: "REDACTED11", date: "2026-09-16", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 0, creditsApplied: 93.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 94,
+      status: "active", notes: "$93.40 REDACTEDCR2 credit" },
+    { airline: "United", confirmation: "REDACTED12", date: "2026-09-18", departTime: "18:28",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 4.00, creditsApplied: 104.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 114,
+      status: "active", notes: "Rebooked Sep 16 UA2117 → Sep 18 UA1302 (+$4.00 card)" },
+    { airline: "United", confirmation: "REDACTED13", date: "2026-09-30", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 0, creditsApplied: 93.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 94,
+      status: "active", notes: "$93.40 REDACTEDCR2 credit" },
+    { airline: "United", confirmation: "REDACTED14", date: "2026-10-02", departTime: "18:28",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 1302",
+      cashPaid: 0, creditsApplied: 108.40, milesPaid: 0, awardFees: 0,
+      currentPrice: 114,
+      status: "active", notes: "$108.40 REDACTEDCR2 credit" },
+    { airline: "United", confirmation: "REDACTED15", date: "2026-10-14", departTime: "16:47",
+      origin: "SFO", destination: "SAN", flightNumbers: "UA 1561",
+      cashPaid: 3.97, creditsApplied: 89.43, milesPaid: 0, awardFees: 0,
+      currentPrice: 94,
+      status: "active", notes: "$89.43 REDACTEDCR2 credit + $3.97 card" },
+    { airline: "United", confirmation: "REDACTED16", date: "2026-10-16", departTime: "13:40",
+      origin: "CLD", destination: "SFO", flightNumbers: "UA 5599",
+      cashPaid: 5.60, creditsApplied: 0, milesPaid: 12600, awardFees: 5.60,
+      status: "active", notes: "Award: 12,600 mi (member price; was 14,900). No matching outbound found" },
+    { airline: "United", confirmation: "REDACTED17", date: "2026-10-23", departTime: "15:56",
+      origin: "SAN", destination: "SFO", flightNumbers: "UA 2117",
+      cashPaid: 0, creditsApplied: 123.41, milesPaid: 0, awardFees: 0,
+      currentPrice: 114,
+      status: "active", notes: "$123.41 from REDACTEDCR3 credit ($144.99 remains unused)" }
+  ],
+  savings: [
+    { date: "2026-07-09", route: "SFO→SAN (REDACTED3)",
+      note: "Date change Aug 6 → Jul 29 returned $28.02 as credit", dollarsSaved: 28.02, milesSaved: 0 },
+    { date: "2026-07-09", route: "SFO→SAN (REDACTED5)",
+      note: "Date change Aug 20 → Aug 12 returned $83.68 as credit", dollarsSaved: 83.68, milesSaved: 0 },
+    { date: "2026-07-09", route: "SAN→SFO (REDACTED6)",
+      note: "Rebooked from SFO→SAN Sep 3 to SAN→SFO Aug 14, returned $101.27 as credit", dollarsSaved: 101.27, milesSaved: 0 }
+  ]
+};
+
+/* ================ RENDERING ================ */
+const fmtUsd   = n => n ? n.toLocaleString("en-US", { style: "currency", currency: "USD" }) : "—";
+const fmtMiles = n => n ? n.toLocaleString("en-US") + " mi" : "—";
+const fmtDate  = iso => new Date(iso + "T00:00:00").toLocaleDateString("en-US",
+                  { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+const fmtTime  = t => {
+  if (!t) return "—";
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h >= 12 ? "pm" : "am";
+  return ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + ampm;
+};
+
+function totalUsd(f) { return (f.cashPaid || 0) + (f.creditsApplied || 0); }
+
+function currentPriceCell(f) {
+  if (f.currentMiles) {
+    const delta = f.currentMiles - (f.milesPaid || 0);
+    const cls = delta <= -MILES_THRESHOLD ? "price-down" : delta >= MILES_THRESHOLD ? "price-up" : "secondary";
+    return `<span class="${cls}">${fmtMiles(f.currentMiles)}</span>`;
+  }
+  if (f.currentPrice != null && f.currentPrice !== "") {
+    const delta = Number(f.currentPrice) - totalUsd(f);
+    const cls = delta <= -USD_THRESHOLD ? "price-down" : delta >= USD_THRESHOLD ? "price-up" : "secondary";
+    return `<span class="${cls}">${fmtUsd(Number(f.currentPrice))}</span>`;
+  }
+  return `<span class="muted">—</span>`;
+}
+
+function render(data, live) {
+  const badge = document.getElementById("source-badge");
+  badge.textContent = live ? "live · Google Sheet" : "local snapshot";
+  badge.className = "badge " + (live ? "live" : "local");
+
+  const link = document.getElementById("sheet-link");
+  if (SHEET_URL) { link.href = SHEET_URL; link.style.display = "inline"; }
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const flights = (data.flights || [])
+    .filter(f => f.status !== "canceled" && new Date(f.date + "T00:00:00") >= today)
+    .sort((a, b) => (a.date + (a.departTime || "")).localeCompare(b.date + (b.departTime || "")));
+
+  const dollarsSaved = (data.savings || []).reduce((s, r) => s + (Number(r.dollarsSaved) || 0), 0);
+  const milesSaved   = (data.savings || []).reduce((s, r) => s + (Number(r.milesSaved) || 0), 0);
+  document.getElementById("saved-value").textContent =
+    (dollarsSaved ? fmtUsd(dollarsSaved) : "$0") +
+    (milesSaved ? " + " + milesSaved.toLocaleString() + " mi" : "");
+
+  document.getElementById("rows").innerHTML = flights.map(f => {
+    const totalParts = [];
+    if (totalUsd(f)) totalParts.push(fmtUsd(totalUsd(f)));
+    if (f.milesPaid) totalParts.push(`<span class="mi">${fmtMiles(f.milesPaid)}</span>`);
+    return `<tr>
+      <td>${fmtDate(f.date)}</td>
+      <td class="secondary">${fmtTime(f.departTime)}</td>
+      <td class="route">${f.origin}<span class="arrow">→</span>${f.destination}</td>
+      <td class="secondary">${f.flightNumbers || "—"}</td>
+      <td class="conf">${f.confirmation}</td>
+      <td class="num">${fmtUsd(f.cashPaid)}</td>
+      <td class="num">${fmtUsd(f.creditsApplied)}</td>
+      <td class="num">${fmtMiles(f.milesPaid)}</td>
+      <td class="num total">${totalParts.join(" + ") || "—"}</td>
+      <td class="num">${currentPriceCell(f)}</td>
+      <td class="credit-note" title="${(f.notes || "").replace(/"/g, "&quot;")}">${f.notes || ""}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="11" class="muted" style="padding:24px;text-align:center">No upcoming flights.</td></tr>`;
+
+  document.getElementById("subtitle").textContent =
+    (live ? "Live from your Google Sheet" : "Embedded snapshot") +
+    (data.generatedAt ? " · data as of " + data.generatedAt : "");
+}
+
+async function load() {
+  if (!DATA_URL) { render(SEED, false); return; }
+  try {
+    const res = await fetch(DATA_URL, { redirect: "follow" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    render(await res.json(), true);
+  } catch (e) {
+    const err = document.getElementById("error");
+    err.style.display = "block";
+    err.textContent = "Couldn't reach the Google Sheet (" + e.message + ") — showing embedded snapshot instead.";
+    render(SEED, false);
+  }
+}
+load();
+</script>
+</body>
+</html>
