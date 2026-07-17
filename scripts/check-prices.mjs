@@ -19,6 +19,11 @@ async function loadFlights(sheets) {
   });
   const [header, ...rows] = res.data.values;
   const col = Object.fromEntries(header.map((name, i) => [name, i]));
+  const required = ['airline', 'date', 'origin', 'destination', 'status', 'milesPaid', 'currentPrice'];
+  const missing = required.filter((name) => col[name] === undefined);
+  if (missing.length) {
+    throw new Error(`Sheet header row is missing expected column(s): ${missing.join(', ')} (found: ${header.join(', ')})`);
+  }
   const today = todayIso();
 
   return rows
