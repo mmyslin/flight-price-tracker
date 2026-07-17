@@ -115,10 +115,10 @@
     <h1>MARK'S FLIGHT TRACKER</h1>
     <div class="meta-row">
       <span id="source-badge" class="badge local">local snapshot</span>
-      <a class="sheet-link" id="sheet-link" target="_blank" rel="noopener" style="display:none">sheet&nbsp;↗</a>
+      <a class="sheet-link" id="sheet-link" target="_blank" rel="noopener" style="display:none">raw data&nbsp;↗</a>
       <span class="meta-date" id="meta-date"></span>
     </div>
-    <p class="subtitle">Upcoming flights and what they actually cost — including credits spent.</p>
+    <p class="subtitle">Upcoming flights, purchased price vs. current price.</p>
   </div>
   <div class="saved-pod">
     <div class="label">Saved via rebooking</div>
@@ -301,7 +301,7 @@ function currentPriceCell(f) {
 
 function render(data, live) {
   const badge = document.getElementById("source-badge");
-  badge.textContent = live ? "live · Google Sheet" : "local snapshot";
+  badge.textContent = live ? "live" : "local snapshot";
   badge.className = "badge " + (live ? "live" : "local");
 
   const link = document.getElementById("sheet-link");
@@ -348,7 +348,7 @@ function render(data, live) {
   }).join("") || `<tr><td colspan="11" class="muted" style="padding:24px;text-align:center">No upcoming flights.</td></tr>`;
 
   document.getElementById("meta-date").textContent =
-    data.generatedAt ? "data as of " + data.generatedAt : "";
+    data.generatedAt ? "updated " + data.generatedAt : "";
 }
 
 async function load() {
