@@ -142,7 +142,7 @@
 
 <footer>
   <div><strong>Total cost</strong> = cash paid + credits applied (credits are real value you spent) + award taxes/fees. Miles shown separately.</div>
-  <div><strong>Current price</strong>: Google Flights "Economy (exclude Basic)" fare for your exact flight (matches United's real Standard/Economy tier — Basic Economy was pulled from GDS content, so it's checked here rather than via a GDS/API route), last checked 2026-07-16 — <span class="price-down">green</span> when ≥ $25 cheaper than you paid, <span class="price-up">red</span> when ≥ $25 more expensive. Award tickets are blank for now (status/card discounts make points prices personal). Savings tally reads the <em>Savings</em> tab of the Sheet.</div>
+  <div><strong>Current price</strong>: Google Flights "Economy (exclude Basic)" fare for your exact flight (matches United's real Standard/Economy tier — Basic Economy was pulled from GDS content, so it's checked here rather than via a GDS/API route), last checked 2026-07-16 — <span class="price-down">green</span> when ≥ $25 cheaper than you paid, <span class="price-up">red</span> when ≥ $25 more expensive. The <span class="price-up">↗</span>/<span class="price-down">↘</span> arrow shows whether the price moved up or down since the previous check (blank until a flight has been checked twice). Award tickets are blank for now (status/card discounts make points prices personal). Savings tally reads the <em>Savings</em> tab of the Sheet.</div>
 </footer>
 
 <script>
@@ -268,16 +268,25 @@ const fmtTime  = t => {
 
 function totalUsd(f) { return (f.cashPaid || 0) + (f.creditsApplied || 0); }
 
+function trendArrow(current, previous) {
+  if (current == null || current === "" || previous == null || previous === "") return "";
+  const cur = Number(current), prev = Number(previous);
+  if (cur === prev) return "";
+  return cur > prev
+    ? `<span class="price-up" title="Up from ${prev} at last check">↗</span>`
+    : `<span class="price-down" title="Down from ${prev} at last check">↘</span>`;
+}
+
 function currentPriceCell(f) {
   if (f.currentMiles) {
     const delta = f.currentMiles - (f.milesPaid || 0);
     const cls = delta <= -MILES_THRESHOLD ? "price-down" : delta >= MILES_THRESHOLD ? "price-up" : "secondary";
-    return `<span class="${cls}">${fmtMiles(f.currentMiles)}</span>`;
+    return `<span class="${cls}">${fmtMiles(f.currentMiles)}</span> ${trendArrow(f.currentMiles, f.previousMiles)}`;
   }
   if (f.currentPrice != null && f.currentPrice !== "") {
     const delta = Number(f.currentPrice) - totalUsd(f);
     const cls = delta <= -USD_THRESHOLD ? "price-down" : delta >= USD_THRESHOLD ? "price-up" : "secondary";
-    return `<span class="${cls}">${fmtUsd(Number(f.currentPrice))}</span>`;
+    return `<span class="${cls}">${fmtUsd(Number(f.currentPrice))}</span> ${trendArrow(f.currentPrice, f.previousPrice)}`;
   }
   return `<span class="muted">—</span>`;
 }
