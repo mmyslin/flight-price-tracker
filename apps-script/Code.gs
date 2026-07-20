@@ -9,6 +9,11 @@
  * cancellation notices, United future-flight-credit notices, and Alaska
  * "Your flight is booked" (Atmos era, incl. re-ticketed changes).
  *
+ * syncFlights() only Gmail-searches the last SYNC_LOOKBACK_DAYS on a Sheet
+ * that already has data (cancellations/credits/rebookings correlate against
+ * the Sheet, not the search window) — keeps it well under the daily Gmail
+ * quota. The very first run against an empty Sheet backfills a full year.
+ *
  * Setup (one time):
  *   1. Create a Google Sheet, then Extensions → Apps Script, paste this file.
  *   2. Run setupSheets() once (grants Sheets scope, creates tabs).
@@ -32,6 +37,7 @@ const FLIGHT_COLS = [
 ];
 const SAVINGS_COLS = ['date', 'route', 'note', 'dollarsSaved', 'milesSaved'];
 const ALERT_USD_THRESHOLD = 25;
+const SYNC_LOOKBACK_DAYS = 3;
 
 /* ============================ SETUP ============================ */
 
@@ -57,26 +63,35 @@ function ensureSheet_(ss, name, headers) {
 function syncFlights() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   setupSheets();
+  const sh = ss.getSheetByName(FLIGHTS_SHEET);
+
+  // Correlation (rebooking carry-forward, cancellations, credits) checks
+  // this map first, so a narrow daily window still finds the *original*
+  // booking even when its email has aged out of the search — only a fresh
+  // Sheet (first-ever run) needs the expensive full-year backfill.
+  const existing = readExistingFlights_(sh);
+  const win = existing.size ? SYNC_LOOKBACK_DAYS + 'd' : '1y';
 
   // 1. Gather booking state per confirmation, processing messages oldest →
   //    newest so re-ticketed changes (same conf, new flight/date) win.
   const bookings = {};   // conf → flight object
-  collectMessages_('from:united.com subject:"eTicket Itinerary and Receipt" newer_than:1y')
-    .forEach(m => { const f = parseUnitedReceipt_(m.body); if (f) remember_(bookings, f, m); });
-  collectMessages_('from:alaskaair.com subject:"Your flight is booked" newer_than:1y')
-    .forEach(m => { const f = parseAlaskaBooked_(m.body); if (f) remember_(bookings, f, m); });
+  collectMessages_('from:united.com subject:"eTicket Itinerary and Receipt" newer_than:' + win)
+    .forEach(m => { const f = parseUnitedReceipt_(m.body); if (f) remember_(bookings, existing, f, m); });
+  collectMessages_('from:alaskaair.com subject:"Your flight is booked" newer_than:' + win)
+    .forEach(m => { const f = parseAlaskaBooked_(m.body); if (f) remember_(bookings, existing, f, m); });
 
-  // 2. Cancellations flip status.
-  collectMessages_('from:united.com (subject:"cancellation is complete" OR subject:"reservation has been canceled") newer_than:1y')
+  // 2. Cancellations flip status — in the in-run booking if present, else
+  //    directly on the already-synced Sheet row.
+  collectMessages_('from:united.com (subject:"cancellation is complete" OR subject:"reservation has been canceled") newer_than:' + win)
     .forEach(m => {
       const conf = matchOne_(m.body, /Confirmation number:\s*([A-Z0-9]{6})/i) ||
                    matchOne_(m.subject, /\(([A-Z0-9]{6})\)/);
-      if (conf && bookings[conf]) bookings[conf].status = 'canceled';
+      markCanceled_(conf, bookings, sh, existing);
     });
-  collectMessages_('from:alaskaair.com subject:(canceled OR cancelled) newer_than:1y')
+  collectMessages_('from:alaskaair.com subject:(canceled OR cancelled) newer_than:' + win)
     .forEach(m => {
       const conf = matchOne_(m.body, /Confirmation code:\s*\n?\s*([A-Z]{6})/i);
-      if (conf && bookings[conf]) bookings[conf].status = 'canceled';
+      markCanceled_(conf, bookings, sh, existing);
     });
 
   // 3. FUTURE FLIGHTS ONLY: drop past and canceled bookings.
@@ -87,21 +102,51 @@ function syncFlights() {
   future.forEach(f => upsertFlight_(ss, f));
 
   // 4. Date-change savings: a future-flight-credit notice whose conf is a
-  //    still-active future booking means a fare difference came back to you.
+  //    still-active future booking (this run or already on the Sheet) means
+  //    a fare difference came back to you.
   const savings = ss.getSheetByName(SAVINGS_SHEET);
   const existingNotes = savings.getLastRow() > 1
     ? savings.getRange(2, 3, savings.getLastRow() - 1, 1).getValues().flat().map(String) : [];
-  collectMessages_('from:united.com subject:"future flight credit" newer_than:1y')
+  collectMessages_('from:united.com subject:"future flight credit" newer_than:' + win)
     .forEach(m => {
       const conf = matchOne_(m.body, /Confirmation Number:?,?\s*([A-Z0-9]{6})/i);
       const amt = matchNum_(m.body, /\$\s?([\d,]+\.\d{2})/);
       if (!conf || !amt) return;
-      const f = future.find(x => x.confirmation === conf);
-      if (!f) return;   // credit from a cancellation, not a rebooking win
+      const f = future.find(x => x.confirmation === conf) || existing.get(conf);
+      if (!f || f.status === 'canceled') return;   // credit from a cancellation, not a rebooking win
       const note = 'Fare difference returned as credit on ' + conf;
       if (existingNotes.some(n => n.includes(conf))) return;
       savings.appendRow([isoDate_(m.date), f.origin + '-' + f.destination + ' (' + conf + ')', note, amt, 0]);
     });
+}
+
+/** Reads already-synced Flights rows into a Map keyed by confirmation, so
+ * correlation (rebooking/cancellation/credit) doesn't depend on the current
+ * Gmail search window covering the original booking email. */
+function readExistingFlights_(sh) {
+  const map = new Map();
+  if (sh.getLastRow() < 2) return map;
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, FLIGHT_COLS.length).getValues();
+  rows.forEach((row, i) => {
+    const f = { rowNum: i + 2 };
+    FLIGHT_COLS.forEach((c, j) => {
+      let v = row[j];
+      if (v instanceof Date) v = (c === 'departTime') ? formatTime_(v) : isoDate_(v);
+      f[c] = v;
+    });
+    if (f.confirmation) map.set(String(f.confirmation), f);
+  });
+  return map;
+}
+
+function markCanceled_(conf, bookings, sh, existing) {
+  if (!conf) return;
+  if (bookings[conf]) { bookings[conf].status = 'canceled'; return; }
+  const row = existing.get(conf);
+  if (row && row.status !== 'canceled') {
+    sh.getRange(row.rowNum, FLIGHT_COLS.indexOf('status') + 1).setValue('canceled');
+    row.status = 'canceled';
+  }
 }
 
 /**
@@ -171,10 +216,10 @@ function collectMessages_(query) {
   return out;
 }
 
-function remember_(bookings, flight, msg) {
+function remember_(bookings, existing, flight, msg) {
   flight.sourceEmail = 'https://mail.google.com/mail/u/0/#all/' + msg.id;
   flight.lastSynced = isoDate_(new Date());
-  const prev = bookings[flight.confirmation];
+  const prev = bookings[flight.confirmation] || existing.get(flight.confirmation);
   if (prev && (prev.date !== flight.date || prev.flightNumbers !== flight.flightNumbers)) {
     flight.notes = ((flight.notes || '') + ' [rebooked from ' + prev.flightNumbers + ' on ' + prev.date + ']').trim();
     // Carry cost forward when a change email has no payment breakdown.
