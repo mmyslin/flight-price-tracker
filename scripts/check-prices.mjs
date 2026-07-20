@@ -144,6 +144,7 @@ async function main() {
         data.push({ range: `${SHEET_TAB}!R${u.rowNum}`, values: [[u.oldPrice]] });
       }
       data.push({ range: `${SHEET_TAB}!P${u.rowNum}`, values: [[u.newPrice]] });
+      data.push({ range: `${SHEET_TAB}!U${u.rowNum}`, values: [[todayIso()]] });
     }
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SHEET_ID,

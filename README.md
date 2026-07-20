@@ -54,7 +54,9 @@ Google Flights headlessly, switches the cabin-class filter to **"Economy (exclud
 Basic)"** (matches United's real Standard/Economy tier — see Conventions), reads the
 lowest fare, and writes it to the Sheet's `currentPrice` column — shifting the prior
 value into `previousPrice` first so the dashboard's trend arrow (↗/↘) stays accurate.
-It never touches award-flight rows.
+`priceCheckDate` is stamped with today's date on every successful write, so a stale
+`currentPrice` (selector broke, flight got skipped) is easy to spot at a glance. It
+never touches award-flight rows.
 
 One-time setup to enable it:
 

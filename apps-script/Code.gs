@@ -33,7 +33,7 @@ const FLIGHT_COLS = [
   'airline', 'confirmation', 'date', 'departTime', 'origin', 'destination',
   'flightNumbers', 'cashPaid', 'creditsApplied', 'milesPaid', 'awardFees',
   'status', 'notes', 'sourceEmail', 'lastSynced', 'currentPrice', 'currentMiles',
-  'previousPrice', 'previousMiles', 'alertedPrice'
+  'previousPrice', 'previousMiles', 'alertedPrice', 'priceCheckDate'
 ];
 const SAVINGS_COLS = ['date', 'route', 'note', 'dollarsSaved', 'milesSaved'];
 const ALERT_USD_THRESHOLD = 25;
