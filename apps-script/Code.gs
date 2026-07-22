@@ -101,22 +101,29 @@ function syncFlights() {
 
   future.forEach(f => upsertFlight_(ss, f));
 
-  // 4. Date-change savings: a future-flight-credit notice whose conf is a
-  //    still-active future booking (this run or already on the Sheet) means
-  //    a fare difference came back to you.
+  // 4. Date-change savings: a future-flight-credit notice whose conf ALSO
+  //    got a fresh booking/receipt this run is a rebooking fare-difference
+  //    win. United sends the same notice for a straight cancellation with no
+  //    accompanying rebooking — no separate "cancellation" email required —
+  //    so treat that case as a cancellation instead of a savings win.
   const savings = ss.getSheetByName(SAVINGS_SHEET);
   const existingNotes = savings.getLastRow() > 1
     ? savings.getRange(2, 3, savings.getLastRow() - 1, 1).getValues().flat().map(String) : [];
   collectMessages_('from:united.com subject:"future flight credit" newer_than:' + win)
     .forEach(m => {
       const conf = matchOne_(m.body, /Confirmation Number:?,?\s*([A-Z0-9]{6})/i);
-      const amt = matchNum_(m.body, /\$\s?([\d,]+\.\d{2})/);
+      // Two templates seen: rebooking credit reads "$28.02"; a straight
+      // cancellation-to-credit reads "Ticket Value USD93.4" (no $, 1 decimal).
+      const amt = matchNum_(m.body, /(?:\$|USD)\s?([\d,]+\.\d{1,2})/);
       if (!conf || !amt) return;
-      const f = future.find(x => x.confirmation === conf) || existing.get(conf);
-      if (!f || f.status === 'canceled') return;   // credit from a cancellation, not a rebooking win
+      const rebooked = bookings[conf];
+      if (!rebooked || rebooked.status === 'canceled') {
+        markCanceled_(conf, bookings, sh, existing);
+        return;
+      }
       const note = 'Fare difference returned as credit on ' + conf;
       if (existingNotes.some(n => n.includes(conf))) return;
-      savings.appendRow([isoDate_(m.date), f.origin + '-' + f.destination + ' (' + conf + ')', note, amt, 0]);
+      savings.appendRow([isoDate_(m.date), rebooked.origin + '-' + rebooked.destination + ' (' + conf + ')', note, amt, 0]);
     });
 }
 
