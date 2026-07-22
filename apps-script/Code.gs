@@ -293,6 +293,10 @@ function upsertFlight_(ss, flight) {
  *  - mixed:  credit + "An additional amount of 3.97 USD ... charged to Visa"
  *  - reissue: "Previous Ticket Balance" + additional collection
  *  - plain cash: "Total: 285.02 USD" on a card
+ *
+ * HTML-only emails (no text/plain part) get getPlainBody()'s auto-converted
+ * text, which wraps <b> runs in literal asterisks — e.g. "applied: *-93.40
+ * USD*" — so amount regexes tolerate an optional `*` before the value.
  */
 function parseUnitedReceipt_(body) {
   const conf = matchOne_(body, /Confirmation Number:\s*\n?\s*([A-Z0-9]{6})/);
@@ -312,13 +316,13 @@ function parseUnitedReceipt_(body) {
     status: 'active', notes: '',
   };
 
-  const miles = matchNum_(body, /Special member price:\s*([\d,]+) miles/) ||
-                matchNum_(body, /Total:\s*([\d,]+) miles/);
-  const creditApplied = matchNum_(body, /Future flight credit applied:\s*-([\d,]+\.\d{2})/);
+  const miles = matchNum_(body, /Special member price:\s*\*?([\d,]+) miles/) ||
+                matchNum_(body, /Total:\s*\*?([\d,]+) miles/);
+  const creditApplied = matchNum_(body, /Future flight credit applied:\s*\*?-([\d,]+\.\d{2})/);
   const creditSource = matchOne_(body, /Future flight credit:[\s\S]{0,60}?Confirmation #:\s*([A-Z0-9]{6})/);
-  const additional = matchNum_(body, /An additional amount of ([\d,]+\.\d{2}) USD/);
-  const totalUsd = matchNum_(body, /Total:\s*([\d,]+\.\d{2}) USD/);
-  const awardFee = matchNum_(body, /Total:\s*[\d,]+ miles \+ ([\d,]+\.\d{2}) USD/);
+  const additional = matchNum_(body, /An additional amount of \*?([\d,]+\.\d{2}) USD/);
+  const totalUsd = matchNum_(body, /Total:\s*\*?([\d,]+\.\d{2}) USD/);
+  const awardFee = matchNum_(body, /Total:\s*\*?[\d,]+ miles \+ \*?([\d,]+\.\d{2}) USD/);
 
   if (miles) {
     f.milesPaid = miles;
