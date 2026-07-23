@@ -78,7 +78,7 @@ function syncFlights() {
   collectMessages_('from:united.com subject:"eTicket Itinerary and Receipt" newer_than:' + win)
     .forEach(m => { const f = parseUnitedReceipt_(m.body); if (f) remember_(bookings, existing, f, m); });
   collectMessages_('from:alaskaair.com subject:"Your flight is booked" newer_than:' + win)
-    .forEach(m => { const f = parseAlaskaBooked_(m.body); if (f) remember_(bookings, existing, f, m); });
+    .forEach(m => { const f = parseAlaskaBooked_(stripHtml_(m.html)); if (f) remember_(bookings, existing, f, m); });
 
   // 2. Cancellations flip status — in the in-run booking if present, else
   //    directly on the already-synced Sheet row.
@@ -90,7 +90,7 @@ function syncFlights() {
     });
   collectMessages_('from:alaskaair.com subject:(canceled OR cancelled) newer_than:' + win)
     .forEach(m => {
-      const conf = matchOne_(m.body, /Confirmation code:\s*\n?\s*([A-Z]{6})/i);
+      const conf = matchOne_(stripHtml_(m.html), /Confirmation code:\s*\n?\s*([A-Z]{6})/i);
       markCanceled_(conf, bookings, sh, existing);
     });
 
@@ -215,6 +215,7 @@ function collectMessages_(query) {
   GmailApp.search(query, 0, 100).forEach(thread =>
     thread.getMessages().forEach(msg => out.push({
       body: msg.getPlainBody(),
+      html: msg.getBody(),
       subject: msg.getSubject(),
       date: msg.getDate(),
       id: msg.getId(),
@@ -352,6 +353,11 @@ function parseUnitedReceipt_(body) {
  *  - "Departure date: Aug 29 at 5:22 PM"
  *  - "5000 points have been redeemed"
  *  - "$5.60 to be charged to the VISA card"
+ *
+ * Takes stripHtml_(msg.getBody()), not getPlainBody() — Alaska's actual
+ * text/plain part is an ESP-generated mess (raw tracking URLs spliced
+ * between labels and values, "&rarr;" left undecoded), so it's parsed from
+ * the HTML instead, matching what the inbox actually shows.
  */
 function parseAlaskaBooked_(body) {
   const conf = matchOne_(body, /Confirmation code:\s*\n?\s*([A-Z0-9]{6})/);
@@ -414,6 +420,24 @@ function sheetToObjects_(sh, cols) {
 
 function matchOne_(s, re) { const m = s.match(re); return m ? m[1] : null; }
 function matchNum_(s, re) { const m = s.match(re); return m ? Number(m[1].replace(/,/g, '')) : 0; }
+/** Lightweight HTML→text: block tags become newlines, other tags drop, common entities decode. */
+function stripHtml_(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<\/?(br|p|div|tr|td|th|li|h[1-6])\b[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&rarr;/gi, '→')
+    .replace(/&zwnj;/gi, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 function round2_(n) { return Math.round(n * 100) / 100; }
 function isoDate_(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
