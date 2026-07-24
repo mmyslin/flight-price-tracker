@@ -166,6 +166,9 @@ const SHEET_URL = "https://docs.google.com/spreadsheets/d/1u66t3zhJezZiguB_ek8la
 const USD_THRESHOLD = 25;
 const MILES_THRESHOLD = 2500;
 
+/* Every trip starts and ends here — used to group legs into roundtrips. */
+const HOME_AIRPORT = "SFO";
+
 /* ============ EMBEDDED SEED DATA ============
    Placeholder-only demo data (no real bookings) shown when DATA_URL is
    unreachable. Shape matches the JSON served by the Apps Script doGet().
@@ -262,14 +265,15 @@ function render(data, live) {
     .filter(f => f.status !== "canceled" && new Date(f.date + "T00:00:00") >= today)
     .sort((a, b) => (a.date + (a.departTime || "")).localeCompare(b.date + (b.departTime || "")));
 
-  // Mark the first leg of each trip (a run of connected flights that
-  // eventually returns to its starting airport, e.g. SFO→CLD→SAN→SFO) so a
-  // divider can separate one trip from the next, however many legs it has.
-  let openOrigin = null;
+  // Mark the first leg of each trip (a run of connected flights, e.g.
+  // SFO→CLD→SAN→SFO) so a divider can separate one trip from the next,
+  // however many legs it has. Trips always start at HOME_AIRPORT — anchor
+  // on that instead of inferring "home" from the first upcoming flight, or
+  // a home-bound leg left dangling after its outbound already flew (e.g.
+  // you're now in SAN with only the SAN→SFO return left) shifts every
+  // grouping after it by one.
   flights.forEach((f, i) => {
-    if (openOrigin === null) { openOrigin = f.origin; f._newTrip = true; }
-    else { f._newTrip = false; }
-    if (f.destination === openOrigin) openOrigin = null;
+    f._newTrip = i === 0 || f.origin === HOME_AIRPORT;
   });
 
   const dollarsSaved = (data.savings || []).reduce((s, r) => s + (Number(r.dollarsSaved) || 0), 0);
