@@ -228,13 +228,24 @@ function remember_(bookings, existing, flight, msg) {
   flight.sourceEmail = 'https://mail.google.com/mail/u/0/#all/' + msg.id;
   flight.lastSynced = isoDate_(new Date());
   const prev = bookings[flight.confirmation] || existing.get(flight.confirmation);
-  if (prev && (prev.date !== flight.date || prev.flightNumbers !== flight.flightNumbers)) {
-    flight.notes = ((flight.notes || '') + ' [rebooked from ' + prev.flightNumbers + ' on ' + prev.date + ']').trim();
-    flight.rebooked = true;   // a newer email supersedes the Sheet — not a hand-edit conflict
-    // Carry cost forward when a change email has no payment breakdown.
-    if (!flight.cashPaid && !flight.creditsApplied && !flight.milesPaid) {
-      flight.cashPaid = prev.cashPaid; flight.creditsApplied = prev.creditsApplied;
-      flight.milesPaid = prev.milesPaid; flight.awardFees = prev.awardFees;
+  if (prev) {
+    const rebookedItinerary = prev.date !== flight.date || prev.flightNumbers !== flight.flightNumbers;
+    // A reissue can correct the payment breakdown (e.g. a different
+    // cash/credit split for the same total) without touching date or
+    // flight number. sourceEmail on the Sheet row is the message that
+    // produced its current values — a different message id here means
+    // this is new information, not a hand-edit to protect.
+    const newEmail = !prev.sourceEmail || !prev.sourceEmail.endsWith(msg.id);
+    if (rebookedItinerary || newEmail) {
+      flight.rebooked = true;   // a newer email supersedes the Sheet — not a hand-edit conflict
+    }
+    if (rebookedItinerary) {
+      flight.notes = ((flight.notes || '') + ' [rebooked from ' + prev.flightNumbers + ' on ' + prev.date + ']').trim();
+      // Carry cost forward when a change email has no payment breakdown.
+      if (!flight.cashPaid && !flight.creditsApplied && !flight.milesPaid) {
+        flight.cashPaid = prev.cashPaid; flight.creditsApplied = prev.creditsApplied;
+        flight.milesPaid = prev.milesPaid; flight.awardFees = prev.awardFees;
+      }
     }
   }
   bookings[flight.confirmation] = flight;
@@ -244,8 +255,9 @@ function remember_(bookings, existing, flight, msg) {
  * Upsert keyed by confirmation. Parser-owned fields are updated; a cell the
  * user hand-edited to something different gets flagged in notes instead of
  * silently clobbered (notes/sourceEmail/lastSynced always refresh). A
- * detected rebooking (flight.rebooked, set in remember_) always overwrites —
- * a newer email superseding stale Sheet data isn't a hand-edit conflict.
+ * rebooking or a same-itinerary reissue from a new message (flight.rebooked,
+ * set in remember_) always overwrites — a newer email superseding stale
+ * Sheet data isn't a hand-edit conflict.
  */
 function upsertFlight_(ss, flight) {
   const sh = ss.getSheetByName(FLIGHTS_SHEET);
