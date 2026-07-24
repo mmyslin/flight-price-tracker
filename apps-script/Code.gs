@@ -254,7 +254,8 @@ function remember_(bookings, existing, flight, msg) {
 /**
  * Upsert keyed by confirmation. Parser-owned fields are updated; a cell the
  * user hand-edited to something different gets flagged in notes instead of
- * silently clobbered (notes/sourceEmail/lastSynced always refresh). A
+ * silently clobbered (notes always refreshes; sourceEmail/lastSynced only
+ * refresh once nothing conflicted — see the note above that block). A
  * rebooking or a same-itinerary reissue from a new message (flight.rebooked,
  * set in remember_) always overwrites — a newer email superseding stale
  * Sheet data isn't a hand-edit conflict.
@@ -272,12 +273,18 @@ function upsertFlight_(ss, flight) {
   }
   const rowNum = idx + 2;
   const conflicts = [];
+  // sourceEmail/lastSynced are applied last, only if nothing conflicted —
+  // advancing them unconditionally would let a message "claim" the row
+  // without its values ever landing, so a later run reprocessing that same
+  // (still in-window) message sees sourceEmail already matching and never
+  // retries the correction, permanently masking it.
   FLIGHT_COLS.forEach((col, i) => {
+    if (col === 'sourceEmail' || col === 'lastSynced') return;
     const parsed = flight[col];
     if (parsed === undefined || parsed === '') return;
     const cur = rows[idx][i];
     const curStr = cur instanceof Date ? (col === 'departTime' ? formatTime_(cur) : isoDate_(cur)) : String(cur);
-    if (flight.rebooked || col === 'notes' || col === 'sourceEmail' || col === 'lastSynced') {
+    if (flight.rebooked || col === 'notes') {
       sh.getRange(rowNum, i + 1).setValue(parsed);
     } else if (curStr === '' || curStr === String(parsed)) {
       sh.getRange(rowNum, i + 1).setValue(parsed);
@@ -292,6 +299,9 @@ function upsertFlight_(ss, flight) {
     if (!existingNote.includes(conflictText.trim())) {
       noteCell.setValue((existingNote + conflictText).trim());
     }
+  } else {
+    sh.getRange(rowNum, FLIGHT_COLS.indexOf('sourceEmail') + 1).setValue(flight.sourceEmail);
+    sh.getRange(rowNum, FLIGHT_COLS.indexOf('lastSynced') + 1).setValue(flight.lastSynced);
   }
 }
 
