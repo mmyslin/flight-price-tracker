@@ -76,7 +76,7 @@ async function checkPrice(browser, flight) {
       const excludeBasicOption = page
         .locator('[role="option"]')
         .filter({ hasText: 'Economy (exclude Basic)' });
-      await excludeBasicOption.first().click({ timeout: 10000 });
+      await excludeBasicOption.first().click({ timeout: 15000 });
 
       await page.waitForURL((u) => u.pathname.includes('/search'), { timeout: 15000 });
 
