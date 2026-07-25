@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
 import { google } from 'googleapis';
+import { mkdirSync } from 'fs';
+import { pathToFileURL } from 'url';
 
 const SHEET_ID = process.env.SHEET_ID;
 const SHEET_TAB = 'Flights';
@@ -7,6 +9,20 @@ const SHEET_TAB = 'Flights';
 // If the cabin-class selection didn't take (e.g. Google changed the UI), the
 // tfs= param won't end this way — used to catch bad reads before they're written.
 const EXPECTED_URL_SUFFIX = 'wGYAQLIAQE';
+
+// Look like a normal Chrome session: Playwright's default headless UA says
+// "HeadlessChrome", which gets Google Flights served in a degraded/throttled
+// variant where prices render slowly or never — the main source of the flaky
+// "waiting for span[aria-label$=US dollars]" timeouts in CI.
+const CONTEXT_OPTS = {
+  userAgent:
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+  viewport: { width: 1440, height: 900 },
+  locale: 'en-US',
+  timezoneId: 'America/Los_Angeles',
+};
+
+const ATTEMPTS = 3;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -48,34 +64,58 @@ async function loadFlights(sheets) {
 }
 
 async function checkPrice(browser, flight) {
-  const query = `${flight.origin} to ${flight.destination} on ${flight.date} one way nonstop ${flight.airline.toLowerCase()}`;
+  // "airlines" suffix matters: a bare "alaska" reads as the STATE to
+  // Google's query parser, which then fails to parse the whole query and
+  // dumps the session on the Flights homepage — no results, no prices.
+  const query = `${flight.origin} to ${flight.destination} on ${flight.date} one way nonstop ${flight.airline.toLowerCase()} airlines`;
   const url = `https://www.google.com/travel/flights?q=${encodeURIComponent(query)}`;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const page = await browser.newPage();
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    if (attempt > 1) await new Promise((r) => setTimeout(r, 2000 * attempt));
+    // Fresh context per attempt: clean cookies and a clean bot-score, so a
+    // degraded first serve doesn't poison the retry.
+    const context = await browser.newContext(CONTEXT_OPTS);
+    const page = await context.newPage();
+    await page.addInitScript(() =>
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-      await page.waitForTimeout(500);
       const consentBtn = page.getByRole('button', { name: /reject all|i agree/i }).first();
       if (await consentBtn.count()) {
         await consentBtn.click().catch(() => {});
       }
 
       const priceEl = page.locator('span[aria-label$="US dollars"]').first();
-      // Baseline (default "include Basic") price, used below to detect the
-      // filtered re-fetch actually landing — the URL updates via fast
-      // client-side routing well before the new fare data arrives, so
-      // reading the price right after the URL check can still return this
-      // stale, cheaper Basic-inclusive number.
-      const baseline = await priceEl.getAttribute('aria-label', { timeout: 10000 }).catch(() => null);
+      // Baseline (default "include Basic") price. Required: if no price has
+      // rendered by now the page is a degraded serve — fail fast into a
+      // retry with a fresh context instead of limping on to a later timeout.
+      const baseline = await priceEl.getAttribute('aria-label', { timeout: 20000 }).catch(() => null);
+      if (baseline == null) throw new Error('no price rendered on results page');
 
       const cabinDropdown = page.locator('[role="combobox"]').filter({ hasText: 'Economy' });
       await cabinDropdown.first().click({ timeout: 15000 });
 
+      // Wait for the menu itself (any VISIBLE option — the page also holds
+      // hidden role=option nodes in closed autocomplete listboxes), THEN
+      // look for the target option. Waiting only on the filtered locator
+      // can't distinguish "menu never opened" (transient, worth retrying)
+      // from "menu open but no such option" (permanent for some airlines).
+      await page.locator('[role="option"]:visible').first().waitFor({ timeout: 10000 });
       const excludeBasicOption = page
-        .locator('[role="option"]')
-        .filter({ hasText: 'Economy (exclude Basic)' });
+        .locator('[role="option"]:visible')
+        .filter({ hasText: /exclude basic/i });
+
+      if ((await excludeBasicOption.count()) === 0) {
+        // No exclude-Basic tier offered for this airline: fall back to the
+        // default lowest-economy fare rather than failing the run.
+        console.warn(`  NOTE ${flight.origin}->${flight.destination} ${flight.date}: no "exclude Basic" option offered — using lowest economy fare`);
+        const price = parseInt(baseline, 10);
+        if (!Number.isFinite(price)) throw new Error(`couldn't parse price from "${baseline}"`);
+        return price;
+      }
+
       await excludeBasicOption.first().click({ timeout: 15000 });
 
       await page.waitForURL((u) => u.pathname.includes('/search'), { timeout: 15000 });
@@ -85,25 +125,32 @@ async function checkPrice(browser, flight) {
         throw new Error(`unexpected tfs param after cabin selection: ${page.url()}`);
       }
 
-      if (baseline) {
-        await page
-          .locator(`span[aria-label$="US dollars"]:not([aria-label="${baseline}"])`)
-          .first()
-          .waitFor({ state: 'attached', timeout: 8000 })
-          .catch(() => {});
-      }
+      // The URL updates via fast client-side routing well before the new
+      // fare data arrives — wait for a price differing from the stale,
+      // cheaper Basic-inclusive baseline before reading.
+      await page
+        .locator(`span[aria-label$="US dollars"]:not([aria-label="${baseline}"])`)
+        .first()
+        .waitFor({ state: 'attached', timeout: 8000 })
+        .catch(() => {});
       await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
 
-      const ariaLabel = await priceEl.getAttribute('aria-label', { timeout: 10000 });
+      const ariaLabel = await priceEl.getAttribute('aria-label', { timeout: 20000 });
       const price = parseInt(ariaLabel, 10);
       if (!Number.isFinite(price)) throw new Error(`couldn't parse price from "${ariaLabel}"`);
 
       return price;
     } catch (err) {
-      console.warn(`  attempt ${attempt} failed for ${flight.origin}->${flight.destination} ${flight.date}: ${err.message}`);
-      if (attempt === 2) return null;
+      console.warn(`  attempt ${attempt} failed for ${flight.origin}->${flight.destination} ${flight.date}: ${err.message.split('\n')[0]}`);
+      try {
+        mkdirSync('debug', { recursive: true });
+        await page.screenshot({
+          path: `debug/${flight.origin}-${flight.destination}-${flight.date}-attempt${attempt}.png`,
+        });
+      } catch { /* screenshots are best-effort */ }
+      if (attempt === ATTEMPTS) return null;
     } finally {
-      await page.close();
+      await context.close();
     }
   }
   return null;
@@ -159,7 +206,13 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+export { checkPrice };
+
+// Only auto-run when executed directly, so a test harness can import
+// checkPrice without kicking off a full Sheet-backed run.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

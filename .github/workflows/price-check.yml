@@ -25,3 +25,11 @@ jobs:
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
           SHEET_ID: '1u66t3zhJezZiguB_ek8laNgmh30mf61LLFFjc8n7ex8'
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: scripts/debug/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -73,7 +73,14 @@ One-time setup to enable it:
    workflow) before relying on the schedule.
 
 The workflow fails loudly (red X, GitHub email notification) if any flight's price
-couldn't be read, so a broken Google Flights selector doesn't fail silently.
+couldn't be read, so a broken Google Flights selector doesn't fail silently. On
+failure, screenshots of what Google actually served are uploaded as a run
+artifact (`debug-screenshots`) — check those first when debugging. Before
+pushing scraper changes, run `node test-harness.mjs` in `scripts/` for a live
+smoke test (no Sheet access needed). Two hard-won quirks: the query must say
+"<airline> airlines" (a bare "alaska" parses as the state and Google serves the
+homepage instead of results), and if an airline's cabin menu has no
+"exclude Basic" option the script falls back to the lowest economy fare.
 
 ## Price-drop email alerts
 
