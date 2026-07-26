@@ -63,6 +63,21 @@ async function loadFlights(sheets) {
     );
 }
 
+// Reads the top listed fare's aria-label ("94 US dollars"), riding out
+// Google's transient "Oops, something went wrong" error panel by doing what
+// its own Reload button does. Returns null if no fare ever renders.
+async function readTopFare(page) {
+  const priceEl = page.locator('span[aria-label$="US dollars"]').first();
+  for (let tries = 0; tries < 3; tries++) {
+    const label = await priceEl.getAttribute('aria-label', { timeout: 20000 }).catch(() => null);
+    if (label != null) return label;
+    if (!(await page.getByText(/something went wrong/i).count())) return null;
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+  }
+  return null;
+}
+
 async function checkPrice(browser, flight) {
   // "airlines" suffix matters: a bare "alaska" reads as the STATE to
   // Google's query parser, which then fails to parse the whole query and
@@ -87,11 +102,10 @@ async function checkPrice(browser, flight) {
         await consentBtn.click().catch(() => {});
       }
 
-      const priceEl = page.locator('span[aria-label$="US dollars"]').first();
       // Baseline (default "include Basic") price. Required: if no price has
       // rendered by now the page is a degraded serve — fail fast into a
       // retry with a fresh context instead of limping on to a later timeout.
-      const baseline = await priceEl.getAttribute('aria-label', { timeout: 20000 }).catch(() => null);
+      const baseline = await readTopFare(page);
       if (baseline == null) throw new Error('no price rendered on results page');
 
       const cabinDropdown = page.locator('[role="combobox"]').filter({ hasText: 'Economy' });
@@ -125,17 +139,18 @@ async function checkPrice(browser, flight) {
         throw new Error(`unexpected tfs param after cabin selection: ${page.url()}`);
       }
 
-      // The URL updates via fast client-side routing well before the new
-      // fare data arrives — wait for a price differing from the stale,
-      // cheaper Basic-inclusive baseline before reading.
-      await page
-        .locator(`span[aria-label$="US dollars"]:not([aria-label="${baseline}"])`)
-        .first()
-        .waitFor({ state: 'attached', timeout: 8000 })
-        .catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+      // The URL now encodes exclude-Basic (tfs check above), but the DOM
+      // still shows the stale include-Basic list: the in-place refetch is
+      // slow and sometimes dies outright with Google's "Oops, something
+      // went wrong" panel. Reading the live DOM here is what wrote Basic
+      // fares (e.g. $59 instead of the real $94) into the Sheet. A hard
+      // reload of the filtered URL gives a clean server render that can
+      // only ever contain exclude-Basic fares.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
 
-      const ariaLabel = await priceEl.getAttribute('aria-label', { timeout: 20000 });
+      const ariaLabel = await readTopFare(page);
+      if (ariaLabel == null) throw new Error('no price rendered after cabin filter');
       const price = parseInt(ariaLabel, 10);
       if (!Number.isFinite(price)) throw new Error(`couldn't parse price from "${ariaLabel}"`);
 
