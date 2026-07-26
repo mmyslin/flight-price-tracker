@@ -101,11 +101,16 @@ function syncFlights() {
 
   future.forEach(f => upsertFlight_(ss, f));
 
-  // 4. Date-change savings: a future-flight-credit notice whose conf ALSO
-  //    got a fresh booking/receipt this run is a rebooking fare-difference
-  //    win. United sends the same notice for a straight cancellation with no
-  //    accompanying rebooking — no separate "cancellation" email required —
-  //    so treat that case as a cancellation instead of a savings win.
+  // 4. Date-change savings: United sends "future flight credit" for two
+  //    unrelated reasons that need opposite handling, distinguished by the
+  //    email's own template rather than same-run timing (a genuine
+  //    rebooking's receipt can legitimately fall just outside the window on
+  //    a given day while the credit notice — sent seconds apart — is still
+  //    in it; requiring both in the SAME run flagged real rebookings as
+  //    cancellations). A straight cancellation-to-credit itemizes "Ticket
+  //    Value" / "Change fee" under "Transaction summary"; a rebooking
+  //    fare-difference credit is just "Future Flight Credit Details" with a
+  //    bare dollar amount — no itemization, because it's not the whole fare.
   const savings = ss.getSheetByName(SAVINGS_SHEET);
   const existingNotes = savings.getLastRow() > 1
     ? savings.getRange(2, 3, savings.getLastRow() - 1, 1).getValues().flat().map(String) : [];
@@ -116,11 +121,12 @@ function syncFlights() {
       // cancellation-to-credit reads "Ticket Value USD93.4" (no $, 1 decimal).
       const amt = matchNum_(m.body, /(?:\$|USD)\s?([\d,]+\.\d{1,2})/);
       if (!conf || !amt) return;
-      const rebooked = bookings[conf];
-      if (!rebooked || rebooked.status === 'canceled') {
+      if (/Transaction summary/i.test(m.body)) {
         markCanceled_(conf, bookings, sh, existing);
         return;
       }
+      const rebooked = bookings[conf] || existing.get(conf);
+      if (!rebooked || rebooked.status === 'canceled') return;   // no active booking on record for this credit
       const note = 'Fare difference returned as credit on ' + conf;
       if (existingNotes.some(n => n.includes(conf))) return;
       savings.appendRow([isoDate_(m.date), rebooked.origin + '-' + rebooked.destination + ' (' + conf + ')', note, amt, 0]);
