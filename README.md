@@ -3,6 +3,9 @@
 Personal dashboard of upcoming flights and what they actually cost — cash, miles,
 and previous credits applied — to make rebook/cancel decisions easy when prices drop.
 
+<img width="1243" height="761" alt="image" src="https://github.com/user-attachments/assets/02386c4b-8f72-4098-a641-4b0301f9a242" />
+
+
 ## Architecture
 
 ```
